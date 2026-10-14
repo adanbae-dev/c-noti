@@ -1,0 +1,15 @@
+{
+  "name": "c-noti",
+  "version": "0.1.0",
+  "description": "Warns Claude when the current branch's diff grows past PR-size limits, and suggests how to split it.",
+  "author": {
+    "name": "adanbae"
+  },
+  "license": "MIT",
+  "keywords": [
+    "pr-size",
+    "diff",
+    "code-review",
+    "git"
+  ]
+}

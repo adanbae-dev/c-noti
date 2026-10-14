@@ -1,0 +1,12 @@
+{
+  "name": "c-noti",
+  "owner": { "name": "adanbae" },
+  "description": "Keep pull requests small.",
+  "plugins": [
+    {
+      "name": "c-noti",
+      "source": "./plugin",
+      "description": "Warns Claude when the current branch's diff grows past PR-size limits."
+    }
+  ]
+}

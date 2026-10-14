@@ -1,0 +1,36 @@
+{
+  "name": "c-noti",
+  "version": "0.1.0",
+  "description": "Keep pull requests small: measure branch diff size against a base branch and warn before it grows too big.",
+  "type": "module",
+  "bin": {
+    "c-noti": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node18 --banner:js='#!/usr/bin/env node' --outfile=dist/cli.js && cp dist/cli.js plugin/bin/c-noti.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "pull-request",
+    "diff",
+    "pr-size",
+    "git",
+    "claude-code",
+    "code-review"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}

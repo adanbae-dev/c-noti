@@ -1,0 +1,13 @@
+# PR 단계에서 변경량 검사. merge-base 계산을 위해 clone depth를 충분히 둡니다.
+clone:
+  depth: full
+
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: PR size check
+          image: node:20
+          script:
+            - git fetch origin "$BITBUCKET_PR_DESTINATION_BRANCH"
+            - npx --yes c-noti report --base "origin/$BITBUCKET_PR_DESTINATION_BRANCH"

@@ -1,0 +1,17 @@
+{
+  "description": "c-noti: notify when branch diff size crosses warn/fail thresholds",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/c-noti.js\" hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
