@@ -44,7 +44,9 @@ PR은 작을수록 리뷰가 잘 됩니다. c-noti는 **현재 브랜치가 base
 
 - 훅은 플러그인 안에 들어 있어 **사용자의 `settings.json`이나 기존 훅을 수정하지 않고**, 기존 훅과 함께 실행됩니다.
 - git 저장소가 아니거나 오류가 나면 조용히 통과합니다.
-- 명령: `/c-noti:size` — 상세 리포트 + Claude가 PR 분할 계획 제안.
+- 명령:
+  - `/c-noti:size` — 상세 리포트 + Claude가 PR 분할 계획 제안.
+  - `/c-noti:init` — 현재 저장소에 `.c-noti.json` 생성. 이미 있으면 빠진 키만 추가 (기존 값 유지). 설정 파일이 없어도 기본값(200/400)으로 동작하므로, 기준을 바꾸고 싶을 때만 쓰면 됩니다.
 - 상태는 `.git/c-noti-state.json`, 스냅샷용 임시 index는 `.git/c-noti-index`에 저장합니다 (둘 다 c-noti 전용 파일).
 - 요약이 안 보일 때: `.git/c-noti-state.json`의 `runs`에 최근 훅 실행 20건이 남습니다. `emitted: false`이면 `note`에 이유(`no changes this turn`, `no baseline` 등)가 기록됩니다.
 
