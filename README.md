@@ -38,6 +38,30 @@ PR은 작을수록 리뷰가 잘 됩니다. c-noti는 **현재 브랜치가 base
 - 기본 제외: lockfile, `dist/`, `build/`, 스냅샷, `*.min.js`, `*.map`, `*.generated.*` 등 + `.gitattributes`의 `linguist-generated` / `linguist-vendored`.
 - 한도 비교 값은 설정의 `metric`에 따라 **추가+삭제**(기본) 또는 **추가만**입니다.
 
+## 로컬 동작과 데이터 흐름
+
+c-noti는 **Claude나 외부 API를 호출하지 않습니다.** 변경량 계산은 로컬 `git` 명령과 파일 읽기만으로 합니다 (번들의 의존 모듈: `node:child_process`, `node:fs`, `node:path`, `node:util` — 네트워크 모듈 없음).
+
+| 기능 | Claude 호출 | 네트워크 | 비고 |
+|---|---|---|---|
+| 변경량 계산 (훅·CLI 공통) | 없음 | 없음 | 로컬 `git` + 파일 읽기 |
+| 한도 초과 경고 (PostToolUse) | 추가 호출 없음 | — | 아래 참고 |
+| 작업 종료 요약 박스 | 없음 | 없음 | 사용자 화면 표시용 |
+| `/c-noti:size`, `/c-noti:init` | **Claude가 실행** | 있음 | 슬래시 명령은 Claude에게 보내는 요청 |
+| CLI (`check`, `report` 등) | 없음 | `npx` 첫 실행 시 npm 다운로드만 | 설치 후 오프라인 동작 |
+| pre-push, CI | 없음 | CI의 npm 다운로드만 | Claude Code 불필요 |
+
+- **경고 문구는 진행 중인 대화의 컨텍스트로 들어갑니다.** 줄 수·영역 이름(`src/api` 등)·브랜치 이름이 포함되며, 원래 오가는 Claude Code 요청과 함께 전송됩니다. 별도 호출이 생기지는 않습니다.
+- **`/c-noti:size`는 분할 계획을 위해 Claude가 `git diff`를 읽을 수 있습니다.** 일반적인 Claude Code 작업과 같은 수준으로 코드 내용이 전송됩니다.
+
+**완전히 로컬에서만 쓰기** — Claude Code 없이 CLI만 사용:
+
+```bash
+npm i -D c-noti        # 한 번 설치하면 이후 네트워크 불필요
+npx c-noti report
+npx c-noti install-hook
+```
+
 ## Claude Code 플러그인
 
 ### 작업 종료 요약
