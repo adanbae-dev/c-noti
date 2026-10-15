@@ -8,7 +8,7 @@ PR은 작을수록 리뷰가 잘 됩니다. c-noti는 **현재 브랜치가 base
 ## 빠른 시작
 
 ```
-/plugin marketplace add <github-user>/c-noti
+/plugin marketplace add adanbae-dev/c-noti
 /plugin install c-noti@c-noti
 ```
 
