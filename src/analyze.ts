@@ -81,16 +81,17 @@ export function classify(root: string, raw: RawChange[], config: Config) {
 export function evaluate(
   size: number,
   fileCount: number,
-  config: Pick<Config, "warn" | "fail" | "maxFiles">,
+  config: Pick<Config, "warn" | "fail" | "maxFiles"> & Partial<Pick<Config, "metric">>,
 ): { level: Level; reasons: string[] } {
   const reasons: string[] = [];
+  const label = config.metric === "added" ? "추가" : "변경";
   let level: Level = "ok";
   if (size > config.fail) {
     level = "fail";
-    reasons.push(`변경 ${size}줄 > 실패 한도 ${config.fail}줄`);
+    reasons.push(`${label} ${size}줄 > 실패 한도 ${config.fail}줄`);
   } else if (size > config.warn) {
     level = "warn";
-    reasons.push(`변경 ${size}줄 > 경고 한도 ${config.warn}줄`);
+    reasons.push(`${label} ${size}줄 > 경고 한도 ${config.warn}줄`);
   }
   if (config.maxFiles > 0 && fileCount > config.maxFiles) {
     if (level === "ok") level = "warn";

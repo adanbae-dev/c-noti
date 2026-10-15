@@ -337,13 +337,14 @@ function classify(root, raw, config) {
 }
 function evaluate(size, fileCount, config) {
   const reasons = [];
+  const label = config.metric === "added" ? "\uCD94\uAC00" : "\uBCC0\uACBD";
   let level = "ok";
   if (size > config.fail) {
     level = "fail";
-    reasons.push(`\uBCC0\uACBD ${size}\uC904 > \uC2E4\uD328 \uD55C\uB3C4 ${config.fail}\uC904`);
+    reasons.push(`${label} ${size}\uC904 > \uC2E4\uD328 \uD55C\uB3C4 ${config.fail}\uC904`);
   } else if (size > config.warn) {
     level = "warn";
-    reasons.push(`\uBCC0\uACBD ${size}\uC904 > \uACBD\uACE0 \uD55C\uB3C4 ${config.warn}\uC904`);
+    reasons.push(`${label} ${size}\uC904 > \uACBD\uACE0 \uD55C\uB3C4 ${config.warn}\uC904`);
   }
   if (config.maxFiles > 0 && fileCount > config.maxFiles) {
     if (level === "ok") level = "warn";

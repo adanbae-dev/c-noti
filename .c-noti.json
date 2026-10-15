@@ -1,6 +1,6 @@
 {
-  "warn": 200,
-  "fail": 400,
+  "warn": 300,
+  "fail": 600,
   "maxFiles": 20,
   "metric": "added",
   "exclude": []

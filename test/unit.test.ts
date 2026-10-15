@@ -65,6 +65,10 @@ describe("evaluate", () => {
     expect(evaluate(500, 11, cfg).reasons).toHaveLength(2);
     expect(evaluate(500, 11, cfg).level).toBe("fail");
   });
+  it("labels the reason by metric", () => {
+    expect(evaluate(201, 1, cfg).reasons[0]).toMatch(/^변경 201줄/);
+    expect(evaluate(201, 1, { ...cfg, metric: "added" }).reasons[0]).toMatch(/^추가 201줄/);
+  });
   it("maxFiles 0 disables the file check", () => {
     expect(evaluate(10, 999, { ...cfg, maxFiles: 0 }).level).toBe("ok");
   });
