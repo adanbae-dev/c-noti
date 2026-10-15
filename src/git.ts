@@ -1,14 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export class GitError extends Error {}
 
-export function git(args: string[], cwd: string, input?: string): string {
+export function git(args: string[], cwd: string, opts: { input?: string; env?: NodeJS.ProcessEnv } = {}): string {
   try {
     return execFileSync("git", args, {
       cwd,
-      input,
+      input: opts.input,
+      env: opts.env,
       encoding: "utf8",
       maxBuffer: 256 * 1024 * 1024,
       stdio: ["pipe", "pipe", "pipe"],
@@ -166,7 +167,7 @@ export function generatedPaths(root: string, paths: readonly string[]): Set<stri
   const out = git(
     ["check-attr", "-z", "--stdin", "linguist-generated", "linguist-vendored"],
     root,
-    paths.join("\0") + "\0",
+    { input: paths.join("\0") + "\0" },
   );
   const tokens = out.split("\0");
   const result = new Set<string>();
@@ -175,4 +176,24 @@ export function generatedPaths(root: string, paths: readonly string[]): Set<stri
     if (value === "set" || value === "true") result.add(tokens[i]!);
   }
   return result;
+}
+
+/**
+ * Writes the whole working tree (incl. untracked, minus ignored) as a tree object and returns its id.
+ * Uses a private index file so the user's staging area is untouched.
+ */
+export function snapshotTree(root: string, gitDirPath: string): string {
+  const index = join(gitDirPath, "c-noti-index");
+  try {
+    copyFileSync(join(gitDirPath, "index"), index); // start from the real index so `add` only rehashes changed files
+  } catch {
+    // no index yet (fresh repo) — git creates one
+  }
+  const env = { ...process.env, GIT_INDEX_FILE: index };
+  git(["add", "-A"], root, { env });
+  return git(["write-tree"], root, { env }).trim();
+}
+
+export function diffTrees(root: string, from: string, to: string): RawChange[] {
+  return parseNumstatZ(git(["diff", "--numstat", "-z", "-M", "--no-ext-diff", from, to, "--"], root));
 }

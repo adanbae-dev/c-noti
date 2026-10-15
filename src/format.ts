@@ -1,4 +1,4 @@
-import type { Level, Report } from "./analyze.js";
+import type { FileChange, Level, Report } from "./analyze.js";
 
 const LABEL: Record<Level, string> = { ok: "OK", warn: "WARN", fail: "FAIL" };
 
@@ -38,6 +38,42 @@ export function formatReport(r: Report, topFiles = 15): string {
   if (r.level !== "ok" && r.groups.length > 1) {
     lines.push("", "분할 제안: 위 영역 단위로 PR을 나누는 것을 검토하세요. 테스트는 대상 코드와 같은 PR에 두세요.");
   }
+  return lines.join("\n");
+}
+
+const ICON: Record<Level, string> = { ok: "✅ OK", warn: "⚠️  WARN", fail: "⛔ FAIL" };
+const RULE = "━".repeat(44);
+
+export interface TurnChanges {
+  files: FileChange[];
+  excludedCount: number;
+}
+
+export function progressBar(value: number, max: number, width = 10): string {
+  const ratio = max > 0 ? Math.min(value / max, 1) : 1;
+  const filled = Math.round(ratio * width);
+  return "█".repeat(filled) + "░".repeat(width - filled);
+}
+
+/** End-of-turn summary shown to the user (Stop hook systemMessage). */
+export function formatTurnSummary(turn: TurnChanges, r: Report, maxFiles = 6): string {
+  const added = turn.files.reduce((n, f) => n + f.added, 0);
+  const deleted = turn.files.reduce((n, f) => n + f.deleted, 0);
+  const sorted = [...turn.files].sort((a, b) => b.added + b.deleted - (a.added + a.deleted));
+  const pct = r.config.fail > 0 ? Math.round((r.size / r.config.fail) * 100) : 0;
+
+  const lines = [
+    `━━ c-noti ${RULE}`,
+    ` 이번 작업   +${added} −${deleted} · 파일 ${turn.files.length}개`,
+    ...sorted.slice(0, maxFiles).map((f) => `     +${f.added} −${f.deleted}  ${f.path}${f.binary ? " [binary]" : ""}`),
+  ];
+  if (sorted.length > maxFiles) lines.push(`     … 외 ${sorted.length - maxFiles}개`);
+  if (turn.excludedCount) lines.push(`     (lockfile·생성 코드 등 ${turn.excludedCount}개 제외)`);
+  lines.push(
+    ` 브랜치 누적 ${r.size} / ${r.config.fail}줄  ${progressBar(r.size, r.config.fail)} ${pct}%  ${ICON[r.level]}`,
+    ...r.reasons.map((x) => `     ${x}`),
+    `━━━━━━━━━${RULE}`,
+  );
   return lines.join("\n");
 }
 

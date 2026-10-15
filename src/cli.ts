@@ -6,6 +6,7 @@ import { CONFIG_FILE, ConfigError, DEFAULT_CONFIG, type Config, type Metric } fr
 import { formatReport, formatSummary } from "./format.js";
 import { git, GitError, repoRoot } from "./git.js";
 import { runHook } from "./hook.js";
+import { mergeConfig, mergePrePush } from "./install.js";
 
 const VERSION = "0.1.0";
 
@@ -14,9 +15,9 @@ const HELP = `c-noti ${VERSION} — PR 변경량 체크
 사용법:
   c-noti [check]        요약 한 줄 출력, 실패 한도 초과 시 exit 1
   c-noti report         영역별·파일별 상세와 분할 제안
-  c-noti init           ${CONFIG_FILE} 기본 설정 파일 생성
-  c-noti install-hook   git pre-push 훅 설치
-  c-noti hook           Claude Code PostToolUse 훅 (stdin JSON)
+  c-noti init           ${CONFIG_FILE} 생성 (있으면 빠진 키만 추가, 기존 값 유지)
+  c-noti install-hook   git pre-push 훅에 c-noti 검사 추가 (기존 훅 내용 유지)
+  c-noti hook           Claude Code 훅 핸들러 (stdin JSON)
 
 옵션:
   --base <ref>          비교 기준 (기본: origin/HEAD → main → master → develop 자동 탐지)
@@ -28,7 +29,6 @@ const HELP = `c-noti ${VERSION} — PR 변경량 체크
   --strict              경고도 exit 1
   --json                JSON 출력
   --cwd <dir>           실행 디렉터리
-  --force               install-hook/init 시 기존 파일 덮어쓰기
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -45,7 +45,6 @@ async function main(argv: string[]): Promise<number> {
       strict: { type: "boolean" },
       json: { type: "boolean" },
       cwd: { type: "string" },
-      force: { type: "boolean" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
     },
@@ -64,9 +63,9 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case "init":
-      return init(cwd, values.force ?? false);
+      return init(cwd);
     case "install-hook":
-      return installHook(cwd, values.force ?? false);
+      return installHook(cwd);
     case "check":
     case "report": {
       const overrides: Partial<Config> = {
@@ -104,33 +103,50 @@ function toNumber(name: string, v: string | undefined): number | undefined {
   return n;
 }
 
-function init(cwd: string, force: boolean): number {
+function init(cwd: string): number {
   const file = join(repoRoot(cwd), CONFIG_FILE);
-  if (existsSync(file) && !force) {
-    printErr(`${file} 이(가) 이미 있습니다 (--force로 덮어쓰기)`);
-    return 2;
-  }
   const { warn, fail, maxFiles, metric, exclude } = DEFAULT_CONFIG;
-  writeFileSync(file, JSON.stringify({ warn, fail, maxFiles, metric, exclude }, null, 2) + "\n");
-  print(`생성: ${file}`);
+  const defaults = { warn, fail, maxFiles, metric, exclude };
+
+  if (!existsSync(file)) {
+    writeFileSync(file, JSON.stringify(defaults, null, 2) + "\n");
+    print(`생성: ${file}`);
+    return 0;
+  }
+  let existing: unknown;
+  try {
+    existing = JSON.parse(readFileSync(file, "utf8"));
+  } catch (e) {
+    throw new ConfigError(`${file}: JSON 파싱 실패, 파일을 수정하지 않았습니다 (${(e as Error).message})`);
+  }
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+    throw new ConfigError(`${file}: JSON 객체가 아니라 수정하지 않았습니다`);
+  }
+  const { merged, added } = mergeConfig(existing as Record<string, unknown>, defaults);
+  if (added.length === 0) {
+    print(`변경 없음: ${file} (모든 설정 키가 이미 있음)`);
+    return 0;
+  }
+  writeFileSync(file, JSON.stringify(merged, null, 2) + "\n");
+  print(`추가: ${added.join(", ")} → ${file} (기존 값 유지)`);
   return 0;
 }
 
-const HOOK_MARKER = "# c-noti pre-push";
-
-function installHook(cwd: string, force: boolean): number {
+function installHook(cwd: string): number {
   const root = repoRoot(cwd);
   // --git-path respects core.hooksPath (husky etc.)
   const hooksDir = resolve(root, git(["rev-parse", "--git-path", "hooks"], root).trim());
   const file = join(hooksDir, "pre-push");
-  if (existsSync(file) && !force && !readFileSync(file, "utf8").includes(HOOK_MARKER)) {
-    printErr(`${file} 이(가) 이미 있습니다. 직접 'npx c-noti check'를 추가하거나 --force로 덮어쓰세요`);
-    return 2;
+  const existing = existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  const next = mergePrePush(existing);
+  if (next === undefined) {
+    print(`이미 설치됨: ${file}`);
+    return 0;
   }
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `#!/bin/sh\n${HOOK_MARKER}\nnpx --yes c-noti check || exit 1\n`);
-  chmodSync(file, 0o755);
-  print(`설치: ${file}`);
+  writeFileSync(file, next);
+  if (existing === undefined) chmodSync(file, 0o755);
+  print(existing === undefined ? `설치: ${file}` : `추가: ${file} (기존 훅 내용 유지, c-noti 검사를 맨 앞에 삽입)`);
   return 0;
 }
 

@@ -3,6 +3,7 @@ import { evaluate, groupFiles, groupKey } from "../src/analyze.js";
 import { ConfigError, DEFAULT_CONFIG, validate } from "../src/config.js";
 import { parseNumstatZ } from "../src/git.js";
 import { createMatcher, globToRegExp } from "../src/glob.js";
+import { progressBar } from "../src/format.js";
 
 describe("globToRegExp", () => {
   it.each([
@@ -101,5 +102,16 @@ describe("validate", () => {
   ])("rejects %o", (patch, msg) => {
     expect(() => validate({ ...DEFAULT_CONFIG, ...patch })).toThrow(ConfigError);
     expect(() => validate({ ...DEFAULT_CONFIG, ...patch })).toThrow(msg);
+  });
+});
+
+describe("progressBar", () => {
+  it.each([
+    [0, 400, "░░░░░░░░░░"],
+    [200, 400, "█████░░░░░"],
+    [999, 400, "██████████"],
+    [5, 0, "██████████"],
+  ])("%i/%i", (v, max, bar) => {
+    expect(progressBar(v, max)).toBe(bar);
   });
 });

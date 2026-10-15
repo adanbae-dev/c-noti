@@ -63,7 +63,7 @@ export function analyze(cwd: string, overrides: Partial<Config> = {}): Report {
   };
 }
 
-function classify(root: string, raw: RawChange[], config: Config) {
+export function classify(root: string, raw: RawChange[], config: Config) {
   const patterns = config.useDefaultExclude ? [...DEFAULT_EXCLUDE, ...config.exclude] : config.exclude;
   const match = createMatcher(patterns);
   const generated = generatedPaths(root, raw.map((c) => c.path));

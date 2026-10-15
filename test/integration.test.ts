@@ -123,11 +123,48 @@ describe("runHook", () => {
     expect(runHook(input()).stdout).toContain("WARN");
   });
 
+  describe("turn summary (UserPromptSubmit → Stop)", () => {
+    const ev = (name: string) => JSON.stringify({ cwd: repo, hook_event_name: name });
+
+    it("summarizes only what changed during the turn, incl. new files", () => {
+      write("src/core/before.ts", 100); // pre-existing branch work, not part of this turn
+      expect(runHook(ev("UserPromptSubmit"))).toEqual({});
+
+      write("src/core/a.ts", 55); // +5
+      write("src/ui/new.tsx", 12); // new untracked file
+      write("package-lock.json", 999); // excluded
+      const msg: string = JSON.parse(runHook(ev("Stop")).stdout!).systemMessage;
+
+      expect(msg).toContain("이번 작업   +17 −0 · 파일 2개");
+      expect(msg).toContain("+12 −0  src/ui/new.tsx");
+      expect(msg).not.toContain("before.ts");
+      expect(msg).toContain("1개 제외");
+      expect(msg).toMatch(/브랜치 누적 117 \/ 400줄/);
+    });
+
+    it("stays silent when the turn changed nothing, and does not repeat on a second Stop", () => {
+      runHook(ev("UserPromptSubmit"));
+      expect(runHook(ev("Stop"))).toEqual({});
+
+      write("src/core/x.ts", 3);
+      expect(runHook(ev("Stop")).stdout).toBeDefined();
+      expect(runHook(ev("Stop"))).toEqual({});
+    });
+
+    it("stays silent without a baseline and leaves the real index untouched", () => {
+      write("src/core/x.ts", 3);
+      expect(runHook(ev("Stop"))).toEqual({});
+      runHook(ev("UserPromptSubmit"));
+      expect(sh("status", "--porcelain")).toBe("?? src/\n".replace("src/", "src/core/x.ts"));
+    });
+  });
+
   it("never throws outside a git repo or on bad input", () => {
     const outside = mkdtempSync(join(tmpdir(), "c-noti-nogit-"));
     try {
       expect(runHook(JSON.stringify({ cwd: outside }))).toEqual({});
-      expect(runHook("not json")).toEqual({});
+      // bad stdin falls back to process.cwd(), which may itself be a repo — only require no throw
+      expect(() => runHook("not json")).not.toThrow();
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }

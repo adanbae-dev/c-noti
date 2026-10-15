@@ -139,15 +139,16 @@ function createMatcher(patterns) {
 
 // src/git.ts
 import { execFileSync } from "node:child_process";
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, openSync, readSync, statSync } from "node:fs";
 import { join as join2 } from "node:path";
 var GitError = class extends Error {
 };
-function git(args, cwd, input) {
+function git(args, cwd, opts = {}) {
   try {
     return execFileSync("git", args, {
       cwd,
-      input,
+      input: opts.input,
+      env: opts.env,
       encoding: "utf8",
       maxBuffer: 256 * 1024 * 1024,
       stdio: ["pipe", "pipe", "pipe"]
@@ -269,7 +270,7 @@ function generatedPaths(root, paths) {
   const out = git(
     ["check-attr", "-z", "--stdin", "linguist-generated", "linguist-vendored"],
     root,
-    paths.join("\0") + "\0"
+    { input: paths.join("\0") + "\0" }
   );
   const tokens = out.split("\0");
   const result = /* @__PURE__ */ new Set();
@@ -278,6 +279,19 @@ function generatedPaths(root, paths) {
     if (value === "set" || value === "true") result.add(tokens[i]);
   }
   return result;
+}
+function snapshotTree(root, gitDirPath) {
+  const index = join2(gitDirPath, "c-noti-index");
+  try {
+    copyFileSync(join2(gitDirPath, "index"), index);
+  } catch {
+  }
+  const env = { ...process.env, GIT_INDEX_FILE: index };
+  git(["add", "-A"], root, { env });
+  return git(["write-tree"], root, { env }).trim();
+}
+function diffTrees(root, from, to) {
+  return parseNumstatZ(git(["diff", "--numstat", "-z", "-M", "--no-ext-diff", from, to, "--"], root));
 }
 
 // src/analyze.ts
@@ -395,6 +409,32 @@ function formatReport(r, topFiles = 15) {
   }
   return lines.join("\n");
 }
+var ICON = { ok: "\u2705 OK", warn: "\u26A0\uFE0F  WARN", fail: "\u26D4 FAIL" };
+var RULE = "\u2501".repeat(44);
+function progressBar(value, max, width = 10) {
+  const ratio = max > 0 ? Math.min(value / max, 1) : 1;
+  const filled = Math.round(ratio * width);
+  return "\u2588".repeat(filled) + "\u2591".repeat(width - filled);
+}
+function formatTurnSummary(turn, r, maxFiles = 6) {
+  const added = turn.files.reduce((n, f) => n + f.added, 0);
+  const deleted = turn.files.reduce((n, f) => n + f.deleted, 0);
+  const sorted = [...turn.files].sort((a, b) => b.added + b.deleted - (a.added + a.deleted));
+  const pct = r.config.fail > 0 ? Math.round(r.size / r.config.fail * 100) : 0;
+  const lines = [
+    `\u2501\u2501 c-noti ${RULE}`,
+    ` \uC774\uBC88 \uC791\uC5C5   +${added} \u2212${deleted} \xB7 \uD30C\uC77C ${turn.files.length}\uAC1C`,
+    ...sorted.slice(0, maxFiles).map((f) => `     +${f.added} \u2212${f.deleted}  ${f.path}${f.binary ? " [binary]" : ""}`)
+  ];
+  if (sorted.length > maxFiles) lines.push(`     \u2026 \uC678 ${sorted.length - maxFiles}\uAC1C`);
+  if (turn.excludedCount) lines.push(`     (lockfile\xB7\uC0DD\uC131 \uCF54\uB4DC \uB4F1 ${turn.excludedCount}\uAC1C \uC81C\uC678)`);
+  lines.push(
+    ` \uBE0C\uB79C\uCE58 \uB204\uC801 ${r.size} / ${r.config.fail}\uC904  ${progressBar(r.size, r.config.fail)} ${pct}%  ${ICON[r.level]}`,
+    ...r.reasons.map((x) => `     ${x}`),
+    `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501${RULE}`
+  );
+  return lines.join("\n");
+}
 function formatHookContext(r) {
   const top = r.groups.slice(0, 5).map((g) => `${g.key} (+${g.added} \u2212${g.deleted})`).join(", ");
   const advice = r.level === "fail" ? "\uD604\uC7AC \uBE0C\uB79C\uCE58\uAC00 PR \uD558\uB098\uB85C \uB9AC\uBDF0\uD558\uAE30\uC5D0 \uB108\uBB34 \uD07D\uB2C8\uB2E4. \uC0C8 \uBC94\uC704\uC758 \uC791\uC5C5\uC744 \uB354 \uC9C4\uD589\uD558\uC9C0 \uB9D0\uACE0, \uC0AC\uC6A9\uC790\uC5D0\uAC8C \uC9C0\uAE08\uAE4C\uC9C0\uC758 \uBCC0\uACBD\uC744 \uCEE4\uBC0B/PR\uB85C \uB04A\uC744\uC9C0 \uBA3C\uC800 \uD655\uC778\uD558\uC138\uC694. \uAD00\uB828 \uC5C6\uB294 \uBCC0\uACBD\uC740 \uBCC4\uB3C4 \uBE0C\uB79C\uCE58\uB85C \uBD84\uB9AC\uB97C \uC81C\uC548\uD558\uC138\uC694." : "PR \uD06C\uAE30\uAC00 \uACBD\uACE0 \uD55C\uB3C4\uB97C \uB118\uC5C8\uC2B5\uB2C8\uB2E4. \uB0A8\uC740 \uC791\uC5C5\uC774 \uD06C\uB2E4\uBA74 \uC0AC\uC6A9\uC790\uC5D0\uAC8C \uD604\uC7AC \uB2E8\uC704\uB85C PR\uC744 \uB04A\uC744\uC9C0 \uC81C\uC548\uD558\uC138\uC694.";
@@ -416,23 +456,58 @@ function runHook(stdin, analyzeFn = analyze) {
   try {
     const input = parseInput(stdin);
     const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
-    const report = analyzeFn(cwd);
-    const statePath = join3(gitDir(report.root), STATE_FILE);
-    const branch = currentBranch(report.root);
+    const root = repoRoot(cwd);
+    const statePath = join3(gitDir(root), STATE_FILE);
     const state = readState(statePath);
-    const prev = state[branch]?.level ?? "ok";
-    state[branch] = { level: report.level, size: report.size };
+    let result;
+    switch (input.hook_event_name) {
+      case "UserPromptSubmit":
+        state.turnTree = snapshotTree(root, dirname(statePath));
+        result = {};
+        break;
+      case "Stop":
+        result = onStop(root, statePath, state, analyzeFn);
+        break;
+      default:
+        result = onPostToolUse(root, state, analyzeFn);
+    }
     writeState(statePath, state);
-    if (RANK[report.level] <= RANK[prev]) return {};
-    return {
-      stdout: JSON.stringify({
-        systemMessage: formatSummary(report),
-        hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: formatHookContext(report) }
-      })
-    };
+    return result;
   } catch {
     return {};
   }
+}
+function onPostToolUse(root, state, analyzeFn) {
+  const report = analyzeFn(root);
+  const prev = recordLevel(root, state, report);
+  if (RANK[report.level] <= RANK[prev]) return {};
+  return {
+    stdout: JSON.stringify({
+      systemMessage: formatSummary(report),
+      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: formatHookContext(report) }
+    })
+  };
+}
+function onStop(root, statePath, state, analyzeFn) {
+  if (!state.turnTree) return {};
+  const tree = snapshotTree(root, dirname(statePath));
+  if (tree === state.turnTree) return {};
+  const report = analyzeFn(root);
+  const { counted, excluded } = classify(root, diffTrees(root, state.turnTree, tree), report.config);
+  state.turnTree = tree;
+  recordLevel(root, state, report);
+  if (counted.length === 0 && excluded.length === 0) return {};
+  return {
+    stdout: JSON.stringify({
+      systemMessage: formatTurnSummary({ files: counted, excludedCount: excluded.length }, report)
+    })
+  };
+}
+function recordLevel(root, state, report) {
+  const branch = currentBranch(root);
+  const prev = state.branches[branch]?.level ?? "ok";
+  state.branches[branch] = { level: report.level, size: report.size };
+  return prev;
 }
 function parseInput(stdin) {
   try {
@@ -444,14 +519,40 @@ function parseInput(stdin) {
 }
 function readState(path) {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    const s = JSON.parse(readFileSync2(path, "utf8"));
+    return { branches: s.branches ?? {}, ...s.turnTree && { turnTree: s.turnTree } };
   } catch {
-    return {};
+    return { branches: {} };
   }
 }
 function writeState(path, state) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(state));
+}
+
+// src/install.ts
+var HOOK_MARKER = "# c-noti pre-push";
+var HOOK_BLOCK = `${HOOK_MARKER}
+npx --yes c-noti check || exit 1
+# c-noti end
+`;
+function mergePrePush(existing) {
+  if (existing === void 0 || existing.trim() === "") return `#!/bin/sh
+${HOOK_BLOCK}`;
+  if (existing.includes(HOOK_MARKER)) return void 0;
+  if (existing.startsWith("#!")) {
+    const eol = existing.indexOf("\n");
+    if (eol < 0) return `${existing}
+${HOOK_BLOCK}`;
+    return existing.slice(0, eol + 1) + HOOK_BLOCK + existing.slice(eol + 1);
+  }
+  return HOOK_BLOCK + existing;
+}
+function mergeConfig(existing, defaults) {
+  const added = Object.keys(defaults).filter((k) => !(k in existing));
+  const merged = { ...existing };
+  for (const k of added) merged[k] = defaults[k];
+  return { merged, added };
 }
 
 // src/cli.ts
@@ -461,9 +562,9 @@ var HELP = `c-noti ${VERSION} \u2014 PR \uBCC0\uACBD\uB7C9 \uCCB4\uD06C
 \uC0AC\uC6A9\uBC95:
   c-noti [check]        \uC694\uC57D \uD55C \uC904 \uCD9C\uB825, \uC2E4\uD328 \uD55C\uB3C4 \uCD08\uACFC \uC2DC exit 1
   c-noti report         \uC601\uC5ED\uBCC4\xB7\uD30C\uC77C\uBCC4 \uC0C1\uC138\uC640 \uBD84\uD560 \uC81C\uC548
-  c-noti init           ${CONFIG_FILE} \uAE30\uBCF8 \uC124\uC815 \uD30C\uC77C \uC0DD\uC131
-  c-noti install-hook   git pre-push \uD6C5 \uC124\uCE58
-  c-noti hook           Claude Code PostToolUse \uD6C5 (stdin JSON)
+  c-noti init           ${CONFIG_FILE} \uC0DD\uC131 (\uC788\uC73C\uBA74 \uBE60\uC9C4 \uD0A4\uB9CC \uCD94\uAC00, \uAE30\uC874 \uAC12 \uC720\uC9C0)
+  c-noti install-hook   git pre-push \uD6C5\uC5D0 c-noti \uAC80\uC0AC \uCD94\uAC00 (\uAE30\uC874 \uD6C5 \uB0B4\uC6A9 \uC720\uC9C0)
+  c-noti hook           Claude Code \uD6C5 \uD578\uB4E4\uB7EC (stdin JSON)
 
 \uC635\uC158:
   --base <ref>          \uBE44\uAD50 \uAE30\uC900 (\uAE30\uBCF8: origin/HEAD \u2192 main \u2192 master \u2192 develop \uC790\uB3D9 \uD0D0\uC9C0)
@@ -475,7 +576,6 @@ var HELP = `c-noti ${VERSION} \u2014 PR \uBCC0\uACBD\uB7C9 \uCCB4\uD06C
   --strict              \uACBD\uACE0\uB3C4 exit 1
   --json                JSON \uCD9C\uB825
   --cwd <dir>           \uC2E4\uD589 \uB514\uB809\uD130\uB9AC
-  --force               install-hook/init \uC2DC \uAE30\uC874 \uD30C\uC77C \uB36E\uC5B4\uC4F0\uAE30
 `;
 async function main(argv) {
   const { values, positionals } = parseArgs({
@@ -491,7 +591,6 @@ async function main(argv) {
       strict: { type: "boolean" },
       json: { type: "boolean" },
       cwd: { type: "string" },
-      force: { type: "boolean" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" }
     }
@@ -507,9 +606,9 @@ async function main(argv) {
       return 0;
     }
     case "init":
-      return init(cwd, values.force ?? false);
+      return init(cwd);
     case "install-hook":
-      return installHook(cwd, values.force ?? false);
+      return installHook(cwd);
     case "check":
     case "report": {
       const overrides = {
@@ -546,33 +645,47 @@ function toNumber(name, v) {
   if (!Number.isFinite(n)) throw new ConfigError(`--${name} \uAC12\uC774 \uC22B\uC790\uAC00 \uC544\uB2D9\uB2C8\uB2E4: ${v}`);
   return n;
 }
-function init(cwd, force) {
+function init(cwd) {
   const file = join4(repoRoot(cwd), CONFIG_FILE);
-  if (existsSync2(file) && !force) {
-    printErr(`${file} \uC774(\uAC00) \uC774\uBBF8 \uC788\uC2B5\uB2C8\uB2E4 (--force\uB85C \uB36E\uC5B4\uC4F0\uAE30)`);
-    return 2;
-  }
   const { warn, fail, maxFiles, metric, exclude } = DEFAULT_CONFIG;
-  writeFileSync2(file, JSON.stringify({ warn, fail, maxFiles, metric, exclude }, null, 2) + "\n");
-  print(`\uC0DD\uC131: ${file}`);
+  const defaults = { warn, fail, maxFiles, metric, exclude };
+  if (!existsSync2(file)) {
+    writeFileSync2(file, JSON.stringify(defaults, null, 2) + "\n");
+    print(`\uC0DD\uC131: ${file}`);
+    return 0;
+  }
+  let existing;
+  try {
+    existing = JSON.parse(readFileSync3(file, "utf8"));
+  } catch (e) {
+    throw new ConfigError(`${file}: JSON \uD30C\uC2F1 \uC2E4\uD328, \uD30C\uC77C\uC744 \uC218\uC815\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4 (${e.message})`);
+  }
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+    throw new ConfigError(`${file}: JSON \uAC1D\uCCB4\uAC00 \uC544\uB2C8\uB77C \uC218\uC815\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4`);
+  }
+  const { merged, added } = mergeConfig(existing, defaults);
+  if (added.length === 0) {
+    print(`\uBCC0\uACBD \uC5C6\uC74C: ${file} (\uBAA8\uB4E0 \uC124\uC815 \uD0A4\uAC00 \uC774\uBBF8 \uC788\uC74C)`);
+    return 0;
+  }
+  writeFileSync2(file, JSON.stringify(merged, null, 2) + "\n");
+  print(`\uCD94\uAC00: ${added.join(", ")} \u2192 ${file} (\uAE30\uC874 \uAC12 \uC720\uC9C0)`);
   return 0;
 }
-var HOOK_MARKER = "# c-noti pre-push";
-function installHook(cwd, force) {
+function installHook(cwd) {
   const root = repoRoot(cwd);
   const hooksDir = resolve(root, git(["rev-parse", "--git-path", "hooks"], root).trim());
   const file = join4(hooksDir, "pre-push");
-  if (existsSync2(file) && !force && !readFileSync3(file, "utf8").includes(HOOK_MARKER)) {
-    printErr(`${file} \uC774(\uAC00) \uC774\uBBF8 \uC788\uC2B5\uB2C8\uB2E4. \uC9C1\uC811 'npx c-noti check'\uB97C \uCD94\uAC00\uD558\uAC70\uB098 --force\uB85C \uB36E\uC5B4\uC4F0\uC138\uC694`);
-    return 2;
+  const existing = existsSync2(file) ? readFileSync3(file, "utf8") : void 0;
+  const next = mergePrePush(existing);
+  if (next === void 0) {
+    print(`\uC774\uBBF8 \uC124\uCE58\uB428: ${file}`);
+    return 0;
   }
   mkdirSync2(dirname2(file), { recursive: true });
-  writeFileSync2(file, `#!/bin/sh
-${HOOK_MARKER}
-npx --yes c-noti check || exit 1
-`);
-  chmodSync(file, 493);
-  print(`\uC124\uCE58: ${file}`);
+  writeFileSync2(file, next);
+  if (existing === void 0) chmodSync(file, 493);
+  print(existing === void 0 ? `\uC124\uCE58: ${file}` : `\uCD94\uAC00: ${file} (\uAE30\uC874 \uD6C5 \uB0B4\uC6A9 \uC720\uC9C0, c-noti \uAC80\uC0AC\uB97C \uB9E8 \uC55E\uC5D0 \uC0BD\uC785)`);
   return 0;
 }
 function readStdin() {
