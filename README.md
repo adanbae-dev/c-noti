@@ -35,7 +35,20 @@ PR은 작을수록 리뷰가 잘 됩니다. c-noti는 **현재 브랜치가 base
 
 - base 브랜치에 나중에 들어간 커밋은 세지 않습니다 (merge-base 기준).
 - rename은 이동으로 인식 (`-M`), 바이너리는 0줄.
-- 기본 제외: lockfile, `dist/`, `build/`, 스냅샷, `*.min.js`, `*.map`, `*.generated.*` 등 + `.gitattributes`의 `linguist-generated` / `linguist-vendored`.
+- 기본 제외 (사람이 줄 단위로 리뷰하지 않는 파일):
+
+  | 분류 | 패턴 |
+  |---|---|
+  | lockfile | `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lockb`, `*.lock`, `go.sum`, `go.work.sum`, `Package.resolved`, `packages.lock.json`, `gradle.lockfile` |
+  | 테스트 스냅샷 | `__snapshots__/`, `*.snap` |
+  | 압축·소스맵 | `*.min.js`, `*.min.css`, `*.map` |
+  | 빌드 결과물 | `dist/`, `build/` |
+  | 코드 생성기 | `__generated__/`, `*.generated.*`, `*.g.dart`, `*.freezed.dart`, `*.mocks.dart`, `*.gr.dart`, `*.pb.go`, `*_pb2.py`, `*_pb.ts` |
+  | IDE 프로젝트 | `*.pbxproj` |
+  | `.gitattributes` | `linguist-generated` / `linguist-vendored`로 표시한 경로 |
+
+- 바이너리(이미지·폰트 등)와 5MB 넘는 새 파일은 0줄로 셉니다. 단 **파일 수(`maxFiles`)에는 포함**되므로, 이미지를 많이 추가한다면 `exclude`에 넣으세요.
+- **SVG, Lottie JSON 등은 기본으로 셉니다.** 빼려면 아래 "추가로 제외할 만한 파일"을 참고하세요.
 - 한도 비교 값은 설정의 `metric`에 따라 **추가+삭제**(기본) 또는 **추가만**입니다.
 
 ## 로컬 동작과 데이터 흐름
@@ -129,6 +142,42 @@ npx c-noti install-hook
 | `useDefaultExclude` | `true` / `false` | `true` | `false`면 기본 제외 목록(lockfile 등)을 쓰지 않음 |
 | `includeUntracked` | `true` / `false` | `true` | `git add` 안 한 새 파일도 셀지 |
 | `base` | 브랜치/ref 문자열 | 자동 탐지 | 비교 기준 |
+
+### 추가로 제외할 만한 파일
+
+기본 목록은 "어느 저장소에서나 거의 항상 기계가 만드는 파일"만 담고 있습니다. 아래 파일은 저장소마다 판단이 달라 기본값에 넣지 않았으니, 필요하면 `exclude`에 추가하세요.
+
+**에셋 — 대개 빼도 무난**
+
+| 파일 | 예시 패턴 | 이유 |
+|---|---|---|
+| SVG 아이콘 | `"*.svg"` 또는 `"src/assets/icons/"` | 디자인 툴에서 내보낸 XML이라 한 파일이 수백 줄. 줄 단위 리뷰 대상이 아님 |
+| Lottie 애니메이션 | `"src/assets/lottie/"`, `"**/animations/*.json"` | 툴이 만든 JSON. 확장자가 `.json`이라 `*.json`으로 빼면 설정 파일까지 빠지므로 **폴더로 지정** |
+| 외부 코드 사본 | `"vendor/"`, `"third_party/"` | 직접 작성한 코드가 아님 |
+
+손으로 작성하거나 고치는 SVG(애니메이션, 차트 등)가 있다면 `*.svg` 대신 아이콘 폴더만 지정하세요.
+
+**생성 파일이지만 리뷰가 필요할 수 있음 — 팀이 판단**
+
+| 파일 | 예시 | 빼면 생길 수 있는 문제 |
+|---|---|---|
+| DB 마이그레이션 | `migrations/`, `schema.rb`, `structure.sql` | 스키마 변경은 중요한 리뷰 대상 |
+| API 스키마 덤프 | `openapi.json`, `schema.graphql` | API 계약 변경이 숨겨짐 |
+| 번역 파일 | `locales/*.json`, `*.po` | 번역 툴에서 받으면 빼도 되지만, 손으로 고치면 리뷰 대상 |
+| 테스트 데이터 | `fixtures/`, `*.csv` | 크지만 테스트 의도를 담고 있을 수 있음 |
+| UI 정의 | `*.storyboard`, `*.xib` | 읽기 어려운 XML이지만 UI 변경 그 자체 |
+
+예시:
+
+```json
+{
+  "exclude": ["*.svg", "src/assets/lottie/", "vendor/"]
+}
+```
+
+생성 위치가 저장소마다 다르면 `.gitattributes`에 `src/assets/icons/** linguist-generated`처럼 표시하는 방법도 있습니다. c-noti와 GitHub PR 화면(생성 파일로 접힘) 양쪽에 함께 적용됩니다.
+
+### 기본 한도의 근거
 
 기본 한도 200/400은 SmartBear/Cisco 코드 리뷰 사례 연구(한 번에 200–400 LOC 이상 리뷰 시 결함 발견 효율 저하)를 출발점으로 잡은 값입니다. 업계 표준이 아니므로 팀 상황에 맞게 조정하세요.
 

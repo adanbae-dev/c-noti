@@ -16,6 +16,10 @@ var DEFAULT_EXCLUDE = [
   "bun.lockb",
   "*.lock",
   "go.sum",
+  "go.work.sum",
+  "Package.resolved",
+  "packages.lock.json",
+  "gradle.lockfile",
   "__snapshots__/",
   "*.snap",
   "*.min.js",
@@ -23,9 +27,18 @@ var DEFAULT_EXCLUDE = [
   "*.map",
   "dist/",
   "build/",
+  // code generators
+  "__generated__/",
   "*.generated.*",
   "*.g.dart",
-  "*.pb.go"
+  "*.freezed.dart",
+  "*.mocks.dart",
+  "*.gr.dart",
+  "*.pb.go",
+  "*_pb2.py",
+  "*_pb.ts",
+  // IDE project files
+  "*.pbxproj"
 ];
 var DEFAULT_CONFIG = {
   warn: 200,

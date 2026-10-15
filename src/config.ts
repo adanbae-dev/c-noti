@@ -30,6 +30,10 @@ export const DEFAULT_EXCLUDE: readonly string[] = [
   "bun.lockb",
   "*.lock",
   "go.sum",
+  "go.work.sum",
+  "Package.resolved",
+  "packages.lock.json",
+  "gradle.lockfile",
   "__snapshots__/",
   "*.snap",
   "*.min.js",
@@ -37,9 +41,18 @@ export const DEFAULT_EXCLUDE: readonly string[] = [
   "*.map",
   "dist/",
   "build/",
+  // code generators
+  "__generated__/",
   "*.generated.*",
   "*.g.dart",
+  "*.freezed.dart",
+  "*.mocks.dart",
+  "*.gr.dart",
   "*.pb.go",
+  "*_pb2.py",
+  "*_pb.ts",
+  // IDE project files
+  "*.pbxproj",
 ];
 
 export const DEFAULT_CONFIG: Config = {

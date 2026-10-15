@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluate, groupFiles, groupKey } from "../src/analyze.js";
-import { ConfigError, DEFAULT_CONFIG, validate } from "../src/config.js";
+import { ConfigError, DEFAULT_CONFIG, DEFAULT_EXCLUDE, validate } from "../src/config.js";
 import { parseNumstatZ } from "../src/git.js";
 import { createMatcher, globToRegExp } from "../src/glob.js";
 import { progressBar } from "../src/format.js";
@@ -23,6 +23,28 @@ describe("globToRegExp", () => {
     ["a.b", "axb", false],
   ])("%s vs %s → %s", (pattern, path, expected) => {
     expect(globToRegExp(pattern).test(path)).toBe(expected);
+  });
+
+  it("default excludes cover lockfiles, generated code and IDE files but not hand-written code", () => {
+    const m = createMatcher(DEFAULT_EXCLUDE);
+    for (const p of [
+      "ios/App.xcodeproj/project.pbxproj",
+      "ios/App.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+      "src/App/packages.lock.json",
+      "android/app/gradle.lockfile",
+      "go.work.sum",
+      "src/__generated__/graphql.ts",
+      "lib/user.freezed.dart",
+      "lib/api.mocks.dart",
+      "lib/router.gr.dart",
+      "proto/user_pb2.py",
+      "web/gen/user_pb.ts",
+    ]) {
+      expect(m(p), p).toBeDefined();
+    }
+    for (const p of ["src/app.ts", "lib/user.dart", "proto/user.proto", "assets/icon.svg", "src/packages.json"]) {
+      expect(m(p), p).toBeUndefined();
+    }
   });
 
   it("createMatcher returns the matching pattern", () => {
