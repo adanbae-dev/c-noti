@@ -11,11 +11,23 @@ interface State {
   branches: Record<string, { level: Level; size: number }>;
   /** Working-tree snapshot taken when the user submitted the current prompt. */
   turnTree?: string;
+  /** Recent invocations (newest last), for diagnosing "hook ran but nothing showed up". */
+  runs?: Run[];
+}
+
+interface Run {
+  event: string;
+  at: string;
+  emitted: boolean;
+  /** Why nothing was emitted, or the error message. */
+  note?: string;
 }
 
 export interface HookResult {
   /** JSON to print on stdout, or undefined to stay silent. */
   stdout?: string;
+  /** Why the hook stayed silent (diagnostics only). */
+  note?: string;
 }
 
 /**
@@ -26,15 +38,18 @@ export interface HookResult {
  * Never throws: a broken size check must not disrupt the session.
  */
 export function runHook(stdin: string, analyzeFn: (cwd: string) => Report = analyze): HookResult {
+  let statePath: string | undefined;
+  let state: State | undefined;
+  const input = parseInput(stdin);
+  const event = typeof input.hook_event_name === "string" ? input.hook_event_name : "PostToolUse";
   try {
-    const input = parseInput(stdin);
     const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
     const root = repoRoot(cwd);
-    const statePath = join(gitDir(root), STATE_FILE);
-    const state = readState(statePath);
+    statePath = join(gitDir(root), STATE_FILE);
+    state = readState(statePath);
 
     let result: HookResult;
-    switch (input.hook_event_name) {
+    switch (event) {
       case "UserPromptSubmit":
         state.turnTree = snapshotTree(root, dirname(statePath));
         result = {};
@@ -45,9 +60,18 @@ export function runHook(stdin: string, analyzeFn: (cwd: string) => Report = anal
       default:
         result = onPostToolUse(root, state, analyzeFn);
     }
+    recordRun(state, { event, emitted: result.stdout !== undefined, note: result.note });
     writeState(statePath, state);
     return result;
-  } catch {
+  } catch (e) {
+    if (statePath && state) {
+      recordRun(state, { event, emitted: false, note: `error: ${(e as Error).message}` });
+      try {
+        writeState(statePath, state);
+      } catch {
+        // ignore
+      }
+    }
     return {};
   }
 }
@@ -65,21 +89,28 @@ function onPostToolUse(root: string, state: State, analyzeFn: (cwd: string) => R
 }
 
 function onStop(root: string, statePath: string, state: State, analyzeFn: (cwd: string) => Report): HookResult {
-  if (!state.turnTree) return {}; // installed mid-turn: no baseline
+  if (!state.turnTree) return { note: "no baseline (installed mid-turn)" };
   const tree = snapshotTree(root, dirname(statePath));
-  if (tree === state.turnTree) return {};
+  if (tree === state.turnTree) return { note: "no changes this turn" };
 
   const report = analyzeFn(root);
   const { counted, excluded } = classify(root, diffTrees(root, state.turnTree, tree), report.config);
   state.turnTree = tree; // a repeated Stop in the same turn won't repeat the summary
   recordLevel(root, state, report);
-  if (counted.length === 0 && excluded.length === 0) return {};
+  if (counted.length === 0 && excluded.length === 0) return { note: "tree changed but no file diff" };
 
   return {
     stdout: JSON.stringify({
       systemMessage: formatTurnSummary({ files: counted, excludedCount: excluded.length }, report),
     }),
   };
+}
+
+const MAX_RUNS = 20;
+
+function recordRun(state: State, run: Omit<Run, "at">): void {
+  const entry: Run = { at: new Date().toISOString(), ...run };
+  state.runs = [...(state.runs ?? []), entry].slice(-MAX_RUNS);
 }
 
 /** Stores the branch's current level and returns the previous one. */
@@ -102,7 +133,8 @@ function parseInput(stdin: string): Record<string, unknown> {
 function readState(path: string): State {
   try {
     const s = JSON.parse(readFileSync(path, "utf8")) as Partial<State>;
-    return { branches: s.branches ?? {}, ...(s.turnTree && { turnTree: s.turnTree }) };
+    const { lastRun: _legacy, ...rest } = s as Partial<State> & { lastRun?: unknown };
+    return { ...rest, branches: rest.branches ?? {} };
   } catch {
     return { branches: {} };
   }

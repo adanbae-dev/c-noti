@@ -453,14 +453,17 @@ import { dirname, join as join3 } from "node:path";
 var RANK = { ok: 0, warn: 1, fail: 2 };
 var STATE_FILE = "c-noti-state.json";
 function runHook(stdin, analyzeFn = analyze) {
+  let statePath;
+  let state;
+  const input = parseInput(stdin);
+  const event = typeof input.hook_event_name === "string" ? input.hook_event_name : "PostToolUse";
   try {
-    const input = parseInput(stdin);
     const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
     const root = repoRoot(cwd);
-    const statePath = join3(gitDir(root), STATE_FILE);
-    const state = readState(statePath);
+    statePath = join3(gitDir(root), STATE_FILE);
+    state = readState(statePath);
     let result;
-    switch (input.hook_event_name) {
+    switch (event) {
       case "UserPromptSubmit":
         state.turnTree = snapshotTree(root, dirname(statePath));
         result = {};
@@ -471,9 +474,17 @@ function runHook(stdin, analyzeFn = analyze) {
       default:
         result = onPostToolUse(root, state, analyzeFn);
     }
+    recordRun(state, { event, emitted: result.stdout !== void 0, note: result.note });
     writeState(statePath, state);
     return result;
-  } catch {
+  } catch (e) {
+    if (statePath && state) {
+      recordRun(state, { event, emitted: false, note: `error: ${e.message}` });
+      try {
+        writeState(statePath, state);
+      } catch {
+      }
+    }
     return {};
   }
 }
@@ -489,19 +500,24 @@ function onPostToolUse(root, state, analyzeFn) {
   };
 }
 function onStop(root, statePath, state, analyzeFn) {
-  if (!state.turnTree) return {};
+  if (!state.turnTree) return { note: "no baseline (installed mid-turn)" };
   const tree = snapshotTree(root, dirname(statePath));
-  if (tree === state.turnTree) return {};
+  if (tree === state.turnTree) return { note: "no changes this turn" };
   const report = analyzeFn(root);
   const { counted, excluded } = classify(root, diffTrees(root, state.turnTree, tree), report.config);
   state.turnTree = tree;
   recordLevel(root, state, report);
-  if (counted.length === 0 && excluded.length === 0) return {};
+  if (counted.length === 0 && excluded.length === 0) return { note: "tree changed but no file diff" };
   return {
     stdout: JSON.stringify({
       systemMessage: formatTurnSummary({ files: counted, excludedCount: excluded.length }, report)
     })
   };
+}
+var MAX_RUNS = 20;
+function recordRun(state, run) {
+  const entry = { at: (/* @__PURE__ */ new Date()).toISOString(), ...run };
+  state.runs = [...state.runs ?? [], entry].slice(-MAX_RUNS);
 }
 function recordLevel(root, state, report) {
   const branch = currentBranch(root);
@@ -520,7 +536,8 @@ function parseInput(stdin) {
 function readState(path) {
   try {
     const s = JSON.parse(readFileSync2(path, "utf8"));
-    return { branches: s.branches ?? {}, ...s.turnTree && { turnTree: s.turnTree } };
+    const { lastRun: _legacy, ...rest } = s;
+    return { ...rest, branches: rest.branches ?? {} };
   } catch {
     return { branches: {} };
   }

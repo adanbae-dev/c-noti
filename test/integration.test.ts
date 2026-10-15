@@ -144,16 +144,16 @@ describe("runHook", () => {
 
     it("stays silent when the turn changed nothing, and does not repeat on a second Stop", () => {
       runHook(ev("UserPromptSubmit"));
-      expect(runHook(ev("Stop"))).toEqual({});
+      expect(runHook(ev("Stop")).stdout).toBeUndefined();
 
       write("src/core/x.ts", 3);
       expect(runHook(ev("Stop")).stdout).toBeDefined();
-      expect(runHook(ev("Stop"))).toEqual({});
+      expect(runHook(ev("Stop")).stdout).toBeUndefined();
     });
 
     it("stays silent without a baseline and leaves the real index untouched", () => {
       write("src/core/x.ts", 3);
-      expect(runHook(ev("Stop"))).toEqual({});
+      expect(runHook(ev("Stop")).stdout).toBeUndefined();
       runHook(ev("UserPromptSubmit"));
       expect(sh("status", "--porcelain")).toBe("?? src/\n".replace("src/", "src/core/x.ts"));
     });

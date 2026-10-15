@@ -46,6 +46,7 @@ PR은 작을수록 리뷰가 잘 됩니다. c-noti는 **현재 브랜치가 base
 - git 저장소가 아니거나 오류가 나면 조용히 통과합니다.
 - 명령: `/c-noti:size` — 상세 리포트 + Claude가 PR 분할 계획 제안.
 - 상태는 `.git/c-noti-state.json`, 스냅샷용 임시 index는 `.git/c-noti-index`에 저장합니다 (둘 다 c-noti 전용 파일).
+- 요약이 안 보일 때: `.git/c-noti-state.json`의 `runs`에 최근 훅 실행 20건이 남습니다. `emitted: false`이면 `note`에 이유(`no changes this turn`, `no baseline` 등)가 기록됩니다.
 
 ## CLI
 
