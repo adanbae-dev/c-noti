@@ -78,7 +78,7 @@ export function formatTurnSummary(turn: TurnChanges, r: Report, maxFiles = 6): s
 }
 
 /** Message injected into Claude's context when the branch crosses a threshold. */
-export function formatHookContext(r: Report): string {
+export function formatHookContext(r: Report, lead?: string): string {
   const top = r.groups
     .slice(0, 5)
     .map((g) => `${g.key} (+${g.added} −${g.deleted})`)
@@ -88,6 +88,7 @@ export function formatHookContext(r: Report): string {
       ? "현재 브랜치가 PR 하나로 리뷰하기에 너무 큽니다. 새 범위의 작업을 더 진행하지 말고, 사용자에게 지금까지의 변경을 커밋/PR로 끊을지 먼저 확인하세요. 관련 없는 변경은 별도 브랜치로 분리를 제안하세요."
       : "PR 크기가 경고 한도를 넘었습니다. 남은 작업이 크다면 사용자에게 현재 단위로 PR을 끊을지 제안하세요.";
   return [
+    lead,
     formatSummary(r),
     ...r.reasons.map((x) => `- ${x}`),
     top && `영역별: ${top}`,

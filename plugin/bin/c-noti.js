@@ -449,10 +449,11 @@ function formatTurnSummary(turn, r, maxFiles = 6) {
   );
   return lines.join("\n");
 }
-function formatHookContext(r) {
+function formatHookContext(r, lead) {
   const top = r.groups.slice(0, 5).map((g) => `${g.key} (+${g.added} \u2212${g.deleted})`).join(", ");
   const advice = r.level === "fail" ? "\uD604\uC7AC \uBE0C\uB79C\uCE58\uAC00 PR \uD558\uB098\uB85C \uB9AC\uBDF0\uD558\uAE30\uC5D0 \uB108\uBB34 \uD07D\uB2C8\uB2E4. \uC0C8 \uBC94\uC704\uC758 \uC791\uC5C5\uC744 \uB354 \uC9C4\uD589\uD558\uC9C0 \uB9D0\uACE0, \uC0AC\uC6A9\uC790\uC5D0\uAC8C \uC9C0\uAE08\uAE4C\uC9C0\uC758 \uBCC0\uACBD\uC744 \uCEE4\uBC0B/PR\uB85C \uB04A\uC744\uC9C0 \uBA3C\uC800 \uD655\uC778\uD558\uC138\uC694. \uAD00\uB828 \uC5C6\uB294 \uBCC0\uACBD\uC740 \uBCC4\uB3C4 \uBE0C\uB79C\uCE58\uB85C \uBD84\uB9AC\uB97C \uC81C\uC548\uD558\uC138\uC694." : "PR \uD06C\uAE30\uAC00 \uACBD\uACE0 \uD55C\uB3C4\uB97C \uB118\uC5C8\uC2B5\uB2C8\uB2E4. \uB0A8\uC740 \uC791\uC5C5\uC774 \uD06C\uB2E4\uBA74 \uC0AC\uC6A9\uC790\uC5D0\uAC8C \uD604\uC7AC \uB2E8\uC704\uB85C PR\uC744 \uB04A\uC744\uC9C0 \uC81C\uC548\uD558\uC138\uC694.";
   return [
+    lead,
     formatSummary(r),
     ...r.reasons.map((x) => `- ${x}`),
     top && `\uC601\uC5ED\uBCC4: ${top}`,
@@ -482,6 +483,9 @@ function runHook(stdin, analyzeFn = analyze) {
         state.turnTree = snapshotTree(root, dirname(statePath));
         result = {};
         break;
+      case "SessionStart":
+        result = onSessionStart(root, state, analyzeFn);
+        break;
       case "Stop":
         result = onStop(root, statePath, state, analyzeFn);
         break;
@@ -501,6 +505,17 @@ function runHook(stdin, analyzeFn = analyze) {
     }
     return {};
   }
+}
+function onSessionStart(root, state, analyzeFn) {
+  const report = analyzeFn(root);
+  recordLevel(root, state, report);
+  if (report.level === "ok") return { note: "ok at session start" };
+  const lead = "\uC774 \uBE0C\uB79C\uCE58\uB294 \uC774\uBBF8 PR \uD06C\uAE30 \uD55C\uB3C4\uB97C \uB118\uC740 \uC0C1\uD0DC\uB85C \uC138\uC158\uC774 \uC2DC\uC791\uB418\uC5C8\uC2B5\uB2C8\uB2E4.";
+  return {
+    stdout: JSON.stringify({
+      hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: formatHookContext(report, lead) }
+    })
+  };
 }
 function onPostToolUse(root, state, analyzeFn) {
   const report = analyzeFn(root);

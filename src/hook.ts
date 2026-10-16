@@ -32,6 +32,7 @@ export interface HookResult {
 
 /**
  * Claude Code hook handler, dispatched on `hook_event_name`:
+ * - SessionStart: if the branch is already over a limit, tell Claude (a new session hasn't seen earlier warnings)
  * - UserPromptSubmit: snapshot the working tree (silent)
  * - Stop: show the user what this turn changed + branch total
  * - PostToolUse (default): tell Claude when the branch escalates (ok→warn→fail)
@@ -54,6 +55,9 @@ export function runHook(stdin: string, analyzeFn: (cwd: string) => Report = anal
         state.turnTree = snapshotTree(root, dirname(statePath));
         result = {};
         break;
+      case "SessionStart":
+        result = onSessionStart(root, state, analyzeFn);
+        break;
       case "Stop":
         result = onStop(root, statePath, state, analyzeFn);
         break;
@@ -74,6 +78,18 @@ export function runHook(stdin: string, analyzeFn: (cwd: string) => Report = anal
     }
     return {};
   }
+}
+
+function onSessionStart(root: string, state: State, analyzeFn: (cwd: string) => Report): HookResult {
+  const report = analyzeFn(root);
+  recordLevel(root, state, report); // PostToolUse then only speaks on further escalation
+  if (report.level === "ok") return { note: "ok at session start" };
+  const lead = "이 브랜치는 이미 PR 크기 한도를 넘은 상태로 세션이 시작되었습니다.";
+  return {
+    stdout: JSON.stringify({
+      hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: formatHookContext(report, lead) },
+    }),
+  };
 }
 
 function onPostToolUse(root: string, state: State, analyzeFn: (cwd: string) => Report): HookResult {

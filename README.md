@@ -20,6 +20,7 @@ PR은 작을수록 리뷰가 잘 됩니다. c-noti는 **현재 브랜치가 base
 
 | 시점 | 무엇이 | 누구에게 |
 |---|---|---|
+| Claude Code 세션 시작 (새 세션·재개·`/clear`·압축 후) | 브랜치가 **이미** WARN/FAIL이면 현재 상태와 대응 지시 전달. OK면 없음 | Claude |
 | Claude가 파일을 저장할 때마다 (Write/Edit) | 한도를 **넘는 순간에만** 경고 (OK→WARN, WARN→FAIL) | Claude |
 | Claude의 답변이 끝날 때마다 | 이번 작업 변경 + 브랜치 누적 요약 박스 | 사용자 화면 |
 | `git push` (선택, `install-hook`) | FAIL이면 push 차단 | 터미널 |
@@ -105,6 +106,7 @@ npx c-noti install-hook
 
 | 훅 | 하는 일 |
 |---|---|
+| `SessionStart` | 브랜치가 이미 한도를 넘은 상태면 Claude에게 알림 (이전 세션에서 받은 경고는 새 세션에 남아 있지 않으므로) |
 | `UserPromptSubmit` | 요청 시점의 작업 트리를 git tree 객체로 스냅샷 (임시 index 사용, 실제 staging은 건드리지 않음). 출력 없음 |
 | `Stop` | 스냅샷 이후 바뀐 파일만 요약해 표시 |
 | `PostToolUse` (`Write\|Edit\|MultiEdit\|NotebookEdit`) | 단계가 올라갈 때만 Claude에게 경고 |
@@ -112,6 +114,23 @@ npx c-noti install-hook
 - 훅은 플러그인 안에 들어 있어 **사용자의 `settings.json`이나 기존 훅을 수정하지 않고**, 기존 훅과 함께 실행됩니다.
 - git 저장소가 아니거나 오류가 나면 조용히 통과합니다.
 - 상태는 `.git/c-noti-state.json`, 스냅샷용 임시 index는 `.git/c-noti-index`에 저장합니다 (둘 다 c-noti 전용 파일).
+
+### Claude의 대응 방식
+
+경고에는 대응 지시가 함께 들어갑니다.
+
+- **WARN**: 남은 작업이 크면 현재 단위로 PR을 끊을지 사용자에게 제안
+- **FAIL**: 새 범위의 작업을 더 진행하지 말고, 커밋/PR로 끊을지 사용자에게 먼저 확인. 관련 없는 변경은 별도 브랜치로 분리 제안
+
+이 지시는 경고 시점과 세션 시작 시점에 전달되므로 **별도 설정 없이 동작합니다.** 반응을 더 엄격하거나 일관되게 하고 싶다면 `CLAUDE.md`에 규칙을 추가할 수 있습니다 (선택):
+
+```md
+## PR 크기 (c-noti)
+- c-noti WARN/FAIL 경고가 오면 새 범위를 진행하기 전에 PR을 나눌지 먼저 물어볼 것
+- 나눌 때는 /c-noti:size 결과를 근거로 의존 순서대로 제안할 것
+```
+
+플러그인은 사용자의 `CLAUDE.md`를 수정하지 않습니다. 위 문구는 직접 추가하세요.
 
 ## 설정
 

@@ -123,6 +123,30 @@ describe("runHook", () => {
     expect(runHook(input()).stdout).toContain("WARN");
   });
 
+  describe("SessionStart", () => {
+    const start = () => runHook(JSON.stringify({ cwd: repo, hook_event_name: "SessionStart" }));
+
+    it("is silent when the branch is within limits", () => {
+      cfg(20, 40);
+      write("src/core/x.ts", 5);
+      expect(start().stdout).toBeUndefined();
+    });
+
+    it("re-tells a new session that the branch is already over a limit, even if an earlier session was warned", () => {
+      cfg(20, 40);
+      write("src/core/x.ts", 25);
+      expect(runHook(input()).stdout).toContain("WARN"); // earlier session got the warning
+
+      const out = JSON.parse(start().stdout!);
+      expect(out.hookSpecificOutput.hookEventName).toBe("SessionStart");
+      expect(out.hookSpecificOutput.additionalContext).toMatch(/^이 브랜치는 이미 PR 크기 한도를 넘은 상태/);
+      expect(out.hookSpecificOutput.additionalContext).toContain("WARN");
+
+      write("src/core/x.ts", 30);
+      expect(runHook(input()).stdout).toBeUndefined(); // same level → PostToolUse stays quiet
+    });
+  });
+
   describe("turn summary (UserPromptSubmit → Stop)", () => {
     const ev = (name: string) => JSON.stringify({ cwd: repo, hook_event_name: name });
 
